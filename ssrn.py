@@ -11,6 +11,23 @@ class Net(nn.Module):
     def __init__(self, classes):
         super().__init__()
         self.classes = classes
+        self.spectral_block = nn.Sequential(
+            nn.Conv3d(1, 24, kernel_size=(7,1,1), stride=(2,1,1)),
+            nn.BatchNorm3d(24),
+            nn.ReLU(inplace=True),
+        )
+        depth = 97
+        self.reshape_block = nn.Sequential(
+            nn.Conv3d(24, 128, kernel_size=(depth,1,1), stride=(1,1,1)),
+            nn.BatchNorm3d(128),
+            nn.ReLU(inplace=True),
+        )
+        self.spatial_block = nn.Sequential(
+            nn.Conv3d(1, 24, kernel_size=(128,3,3), stride=(1,1,1)),
+            nn.BatchNorm3d(24),
+            nn.ReLU(inplace=True),
+        )
+        self.pool1 = nn.AvgPool3d(kernel_size=(1,5,5))
         self.classifier = nn.Sequential(
             nn.Dropout(),
             nn.Linear(24, classes),
@@ -23,22 +40,13 @@ class Net(nn.Module):
 
     def forward(self, x):
         batch_size = x.size()[0]
-        # spectral
-        x = nn.Conv3d(1, 24, kernel_size=(7,1,1), stride=(2,1,1))(x)
-        x = nn.BatchNorm3d(24)(x)
-        x = nn.ReLU(inplace=True)(x)
-        depth = np.shape(x)[2]
-        x = nn.Conv3d(24, 128, kernel_size=(depth,1,1), stride=(1,1,1))(x)
-        x = nn.BatchNorm3d(128)(x)
-        x = nn.ReLU(inplace=True)(x)
+        x = self.spectral_block(x) # spectral
+        x = self.reshape_block(x) # reshape
         x = x.reshape(batch_size, 1, 128, 7, 7)
-        # spatial
-        x = nn.Conv3d(1, 24, kernel_size=(128,3,3), stride=(1,1,1))(x)
-        x = nn.BatchNorm3d(24)(x)
-        x = nn.ReLU(inplace=True)(x)
+        x = self.spatial_block(x)  # spatial
         x = x.reshape(batch_size, 1, 24, 5, 5)
         # avgpool and full-connection
-        x = nn.AvgPool3d(kernel_size=(1,5,5))(x)
+        x = self.pool1(x)
         x = x.view(batch_size, 24)
         x = self.classifier(x)
         return x
@@ -63,7 +71,7 @@ def train(net, trainloader):
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
-            if i % 100 == 99:    # print every 2000 mini-batches
+            if i % 10 == 9:    # print every 2000 mini-batches
                 print('[%d, %d] loss: %.3f' % (epoch+1, i+1, running_loss/2000))
                 running_loss = 0.0
 
