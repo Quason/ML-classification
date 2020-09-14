@@ -44,8 +44,9 @@ class Net(nn.Module):
         return x
 
 
-def train(net, trainloader, device):
-    # net.to(device=device)
+def train(net, trainloader):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    net.to(device=device)
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(net.parameters(), lr=0.001)
     # train
@@ -54,8 +55,8 @@ def train(net, trainloader, device):
         running_loss = 0.0
         for i, data in enumerate(trainloader):
             inputs, labels = data
-            # inputs = inputs.to(device=device)
-            # labels = labels.to(device=device)
+            inputs = inputs.to(device=device)
+            labels = labels.to(device=device)
             optimizer.zero_grad()
             outputs = net(inputs)
             loss = criterion(outputs, labels)
@@ -95,7 +96,6 @@ def main():
     label = load_data('./dataset/Indian_pines_gt.mat')
     label = label.astype(int)
     classes = np.max(label)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # print(dataset.shape, label.shape)
     dst_fn = 'res_ssrn.tif'
     # dataset split
@@ -129,12 +129,8 @@ def main():
         train_label.append(t_label.type(torch.LongTensor))
     trainloader = torch.utils.data.DataLoader(
         MyDataset(train_data,train_label), batch_size=batch_size_train, shuffle=True)
-    train(net, trainloader, device)
+    train(net, trainloader)
     
-    # a = torch.rand(1,1,200,7,7)
-    # net = Net(2)
-    # y = net.forward(a)
-    # print(y)
 
 if __name__ == '__main__':
     main()
