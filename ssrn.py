@@ -53,11 +53,11 @@ class Net(nn.Module):
 
 
 def train(net, trainloader):
+    print('train...')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     net.to(device=device)
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(net.parameters(), lr=0.001)
-    # train
     for epoch in range(1):
         print('epoch %d...' % (epoch+1))
         running_loss = 0.0
@@ -71,9 +71,28 @@ def train(net, trainloader):
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
-            if i % 10 == 9:    # print every 2000 mini-batches
-                print('[%d, %d] loss: %.3f' % (epoch+1, i+1, running_loss/2000))
-                running_loss = 0.0
+            # if i % 10 == 9:    # print every 2000 mini-batches
+            #     print('[%d, %d] loss: %.3f' % (epoch+1, i+1, running_loss/2000))
+            #     running_loss = 0.0
+    return net
+
+
+def test(net, testloader):
+    print('test...')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    net.to(device=device)
+    running_loss = 0.0
+    predict_true = 0.0
+    predict_sum = 0.0
+    for i, data in enumerate(testloader):
+        inputs, labels = data
+        inputs = inputs.to(device=device)
+        labels = labels.to(device=device)
+        outputs = net(inputs)
+        _, predicted = torch.max(outputs, 1)
+        predict_true += int(torch.sum(predicted==labels))
+        predict_sum += len(labels)
+    print('accuracy: %.2f' % (predict_true/predict_sum))
 
 
 class MyDataset(Dataset):
@@ -96,17 +115,7 @@ def load_data(src_fn):
     return None
 
 
-def main():
-    dataset = load_data('./dataset/Indian_pines_corrected.mat')
-    dataset = dataset.astype(float)
-    dataset = np.swapaxes(dataset, 0, 2) # x,y,x --> z,y,z
-    dataset = np.swapaxes(dataset, 1, 2) # z,y,x --> z,x,y
-    label = load_data('./dataset/Indian_pines_gt.mat')
-    label = label.astype(int)
-    classes = np.max(label)
-    # print(dataset.shape, label.shape)
-    dst_fn = 'res_ssrn.tif'
-    # dataset split
+def myLoader(dataset, label, train_perc):
     pad_size = 3
     batch_size_train = 4
     batch_size_test = 4
@@ -119,10 +128,9 @@ def main():
             if label[i,j] != 0:
                 valid_index.append([i,j])
     random.shuffle(valid_index)
-    train_size = int(len(valid_index) * 0.1)
+    # train dataset
+    train_size = int(len(valid_index) * train_perc)
     train_index = valid_index[0:train_size]
-    test_index = valid_index[train_size:]
-    net = Net(classes)
     train_data = []
     train_label = []
     for item in train_index:
@@ -137,7 +145,39 @@ def main():
         train_label.append(t_label.type(torch.LongTensor))
     trainloader = torch.utils.data.DataLoader(
         MyDataset(train_data,train_label), batch_size=batch_size_train, shuffle=True)
-    train(net, trainloader)
+    # test dataset
+    test_index = valid_index[train_size:]
+    test_data = []
+    test_label = []
+    for item in test_index:
+        t_data = dataset[
+            :, item[0]-pad_size:item[0]+pad_size+1,
+            item[1]-pad_size:item[1]+pad_size+1]
+        t_data = t_data.reshape(1, dsize[0], pad_size*2+1, pad_size*2+1)
+        t_data = torch.from_numpy(t_data)
+        t_data = t_data.type(torch.FloatTensor)
+        t_label = torch.tensor(label[item[0], item[1]]-1)
+        test_data.append(t_data)
+        test_label.append(t_label.type(torch.LongTensor))
+    testloader = torch.utils.data.DataLoader(
+        MyDataset(test_data,test_label), batch_size=batch_size_test, shuffle=True)
+    return trainloader, testloader
+
+
+def main():
+    dataset = load_data('./dataset/Indian_pines_corrected.mat')
+    dataset = dataset.astype(float)
+    dataset = np.swapaxes(dataset, 0, 2) # x,y,x --> z,y,z
+    dataset = np.swapaxes(dataset, 1, 2) # z,y,x --> z,x,y
+    label = load_data('./dataset/Indian_pines_gt.mat')
+    label = label.astype(int)
+    classes = np.max(label)
+    dst_fn = 'res_ssrn.tif'
+    net = Net(classes)
+    train_loader, test_loader = myLoader(dataset, label, 0.1) # data split
+    print('train samples:%d, test samples:%d' % (len(train_loader),len(test_loader)))
+    net = train(net, train_loader) # train
+    test(net, test_loader)
     
 
 if __name__ == '__main__':
