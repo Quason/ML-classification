@@ -40,7 +40,7 @@ if __name__ == '__main__':
     dataset = load_data('./dataset/Indian_pines_corrected.mat')
     label = load_data('./dataset/Indian_pines_gt.mat')
     dst_fn = 'res_RF.tif'
-    train_percent = 0.1
+    train_percent = 0.5
     model = 'RF'
     if dataset is None or label is None:
         raise Exception('failed to import data!')
@@ -55,8 +55,8 @@ if __name__ == '__main__':
         # RF
         classifier = RandomForestClassifier()
     classifier.fit(train_data, train_label)
-    print("训练集：", classifier.score(train_data, train_label))
-    print("测试集：", classifier.score(test_data, test_label))
+    print("训练集：%.4f" % classifier.score(train_data, train_label))
+    print("测试集：%.4f" % classifier.score(test_data, test_label))
     # apply
     predict = model_apply(classifier, dataset)
     skimage.io.imsave(dst_fn, predict.astype(np.uint8))
