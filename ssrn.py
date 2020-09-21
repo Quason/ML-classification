@@ -7,7 +7,7 @@ import scipy.io as scio
 import random
 from torch.utils.data import Dataset, DataLoader
 
-class Net(nn.Module):
+class NetSS(nn.Module):
     def __init__(self, classes):
         super().__init__()
         self.classes = classes
@@ -81,7 +81,7 @@ class Net(nn.Module):
         return x
 
 
-class Net2(nn.Module):
+class NetSS2(nn.Module):
     def __init__(self, classes):
         super().__init__()
         self.classes = classes
@@ -117,7 +117,7 @@ class Net2(nn.Module):
         return x
 
 
-class Net1d(nn.Module):
+class Net1D(nn.Module):
     def __init__(self, classes):
         super().__init__()
         self.classes = classes
@@ -138,11 +138,15 @@ class Net1d(nn.Module):
             nn.BatchNorm1d(192),
             nn.ReLU(inplace=True),
             nn.MaxPool1d(kernel_size=2), # (6, 192)
+            nn.Conv1d(192, 384, kernel_size=3, stride=1, padding=1), # (6, 384)
+            nn.BatchNorm1d(384),
+            nn.ReLU(inplace=True),
+            nn.MaxPool1d(kernel_size=2), # (3, 384)
         )
         
         self.classifier = nn.Sequential(
             nn.Dropout(),
-            nn.Linear(6*192, 1024),
+            nn.Linear(3*384, 1024),
             nn.ReLU(inplace=True),
             nn.Dropout(),
             nn.Linear(1024, 1024),
@@ -153,9 +157,30 @@ class Net1d(nn.Module):
     def forward(self, x):
         batch_size = x.size()[0]
         x = self.features(x)
-        x = x.view(batch_size, 6*192)
+        x = x.view(batch_size, 3*384)
         x = self.classifier(x)
         return x
+
+
+class NetBP(nn.Module):
+    def __init__(self, classes):
+        super().__init__()
+        self.classes = classes
+        
+        self.classifier = nn.Sequential(
+            nn.Linear(200, 1024),
+            nn.ReLU(inplace=True),
+            nn.Linear(1024, 1024),
+            nn.ReLU(inplace=True),
+            nn.Linear(1024, classes),
+        )
+
+    def forward(self, x):
+        batch_size = x.size()[0]
+        x = x.view(batch_size, 200)
+        x = self.classifier(x)
+        return x
+
 
 def train(net, trainloader):
     print('train...')
@@ -320,13 +345,13 @@ def main():
     label = label.astype(int)
     classes = np.max(label) + 1
     dst_fn = 'res_ssrn.tif'
-    net = Net(classes)
-    train_loader, test_loader = myLoader(dataset, label, 0.5) # data split
-    # train_loader, test_loader = myLoader1d(dataset, label, 0.5)
+    net = Net1D(classes)
+    # train_loader, test_loader = myLoader(dataset, label, 0.5) # data split
+    train_loader, test_loader = myLoader1d(dataset, label, 0.5)
     print('train samples:%d, test samples:%d' % (len(train_loader),len(test_loader)))
     net = train(net, train_loader) # train
     test(net, test_loader)
-    
+
 
 if __name__ == '__main__':
     main()
