@@ -122,42 +122,22 @@ class Net1D(nn.Module):
         super().__init__()
         self.classes = classes
         self.features = nn.Sequential(
-            nn.Conv1d(1, 24, kernel_size=7, stride=2, padding=3), # (100, 24)
-            nn.BatchNorm1d(24),
-            nn.ReLU(inplace=True),
-            nn.MaxPool1d(kernel_size=2), # (50, 24)
-            nn.Conv1d(24, 48, kernel_size=5, stride=1, padding=2), # (50, 48)
-            nn.BatchNorm1d(48),
-            nn.ReLU(inplace=True),
-            nn.MaxPool1d(kernel_size=2), # (25, 48)
-            nn.Conv1d(48, 96, kernel_size=5, stride=1, padding=2), # (25, 96)
-            nn.BatchNorm1d(96),
-            nn.ReLU(inplace=True),
-            nn.MaxPool1d(kernel_size=2), # (12, 96)
-            nn.Conv1d(96, 192, kernel_size=5, stride=1, padding=2), # (12, 192)
-            nn.BatchNorm1d(192),
-            nn.ReLU(inplace=True),
-            nn.MaxPool1d(kernel_size=2), # (6, 192)
-            nn.Conv1d(192, 384, kernel_size=3, stride=1, padding=1), # (6, 384)
-            nn.BatchNorm1d(384),
-            nn.ReLU(inplace=True),
-            nn.MaxPool1d(kernel_size=2), # (3, 384)
+            nn.Conv1d(1, 20, kernel_size=23), # (178, 20)
+            nn.BatchNorm1d(20),
+            nn.MaxPool1d(kernel_size=5), # (35, 20)
+            nn.Tanh(),
         )
         
         self.classifier = nn.Sequential(
-            nn.Dropout(),
-            nn.Linear(3*384, 1024),
-            nn.ReLU(inplace=True),
-            nn.Dropout(),
-            nn.Linear(1024, 1024),
-            nn.ReLU(inplace=True),
-            nn.Linear(1024, classes),
+            nn.Linear(20*35, 100),
+            nn.Tanh(),
+            nn.Linear(100, classes),
         )
 
     def forward(self, x):
         batch_size = x.size()[0]
         x = self.features(x)
-        x = x.view(batch_size, 3*384)
+        x = x.view(batch_size, 20*35)
         x = self.classifier(x)
         return x
 
@@ -255,8 +235,7 @@ def myLoader(dataset, label, train_perc):
     valid_index = []
     for i in range(pad_size, dsize[1]-pad_size):
         for j in range(pad_size, dsize[2]-pad_size):
-            if label[i,j] != 0:
-                valid_index.append([i,j])
+            valid_index.append([i,j])
     random.shuffle(valid_index)
     # train dataset
     train_size = int(len(valid_index) * train_perc)
@@ -301,8 +280,7 @@ def myLoader1d(dataset, label, train_perc):
     valid_index = []
     for i in range(dsize[1]):
         for j in range(dsize[2]):
-            if label[i,j] != 0:
-                valid_index.append([i,j])
+            valid_index.append([i,j])
     random.shuffle(valid_index)
     # train dataset
     train_size = int(len(valid_index) * train_perc)
@@ -347,7 +325,7 @@ def main():
     dst_fn = 'res_ssrn.tif'
     net = Net1D(classes)
     # train_loader, test_loader = myLoader(dataset, label, 0.5) # data split
-    train_loader, test_loader = myLoader1d(dataset, label, 0.5)
+    train_loader, test_loader = myLoader1d(dataset, label, 0.2)
     print('train samples:%d, test samples:%d' % (len(train_loader),len(test_loader)))
     net = train(net, train_loader) # train
     test(net, test_loader)
