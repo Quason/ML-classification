@@ -7,112 +7,34 @@ import scipy.io as scio
 import random
 from torch.utils.data import Dataset, DataLoader
 
-class NetSS(nn.Module):
+# RF: train:test=2:8 accuracy=0.76
+# Baseline: epoch=30 train:test=2:8 accuracy=0.51
+# Conv1D: epoch=30 train:test=2:8 accuracy=0.7
+# Net3DByHamida: epoch=30 train:test=2:8 accuracy=0.78
+
+class Baseline(nn.Module):
+    ''' baseline network: BP
+    '''
     def __init__(self, classes):
         super().__init__()
         self.classes = classes
-        self.spectral_block = nn.Sequential(
-            nn.Conv3d(1, 24, kernel_size=(7,1,1), stride=(2,1,1)),
-            nn.BatchNorm3d(24),
-            nn.ReLU(inplace=True),
-        )
-        self.spectral_block2 = nn.Sequential(
-            nn.Conv3d(24, 24, kernel_size=(7,1,1), stride=(1,1,1), padding=(3,0,0)),
-            nn.BatchNorm3d(24),
-        )
-        depth = 97
-        self.reshape_block = nn.Sequential(
-            nn.Conv3d(24, 128, kernel_size=(depth,1,1), stride=(1,1,1)),
-            nn.BatchNorm3d(128),
-            nn.ReLU(inplace=True),
-        )
-        self.spatial_block = nn.Sequential(
-            nn.Conv3d(1, 24, kernel_size=(128,3,3), stride=(1,1,1)),
-            nn.BatchNorm3d(24),
-            nn.ReLU(inplace=True),
-        )
-        self.spatial_block2 = nn.Sequential(
-            nn.Conv3d(1, 24, kernel_size=(24,3,3), stride=(1,1,1), padding=(0,1,1)),
-            nn.BatchNorm3d(24),
-        )
-        self.pool1 = nn.AvgPool3d(kernel_size=(1,5,5))
+        
         self.classifier = nn.Sequential(
+            nn.Linear(200, 2048),
+            nn.ReLU(),
             nn.Dropout(),
-            nn.Linear(24, classes),
-            nn.ReLU(inplace=True),
+            nn.Linear(2048, 4096),
+            nn.ReLU(),
             nn.Dropout(),
-            nn.Linear(classes, classes),
-            nn.ReLU(inplace=True),
-            nn.Linear(classes, classes),
-        )
-        self.relu = nn.ReLU(inplace=True)
-
-    def _res_block_spectral(self, x):
-        y = self.spectral_block2(x)
-        y = self.relu(y)
-        y = self.spectral_block2(y)
-        y += x
-        y = self.relu(y)
-        return y
-
-    def _res_block_spatial(self, x):
-        y = self.spatial_block2(x)
-        y = y.reshape(y.shape[0], y.shape[2], y.shape[1], y.shape[3], y.shape[4])
-        y = self.relu(y)
-        y = self.spatial_block2(y)
-        y = y.reshape(y.shape[0], y.shape[2], y.shape[1], y.shape[3], y.shape[4])
-        y += x
-        y = self.relu(y)
-        return y
-
-    def forward(self, x):
-        batch_size = x.size()[0]
-        x = self.spectral_block(x) # spectral (x -> 97*7*7, 24)
-        x = self._res_block_spectral(x) # residual block (97*7*7, 24)
-        x = self.reshape_block(x) # reshape (1*7*7, 128)
-        x = x.reshape(batch_size, 1, 128, 7, 7) # (128*7*7)
-        x = self.spatial_block(x)  # spatial (1*5*5, 24)
-        x = x.reshape(batch_size, 1, 24, 5, 5) # (24,5,5)
-        x = self._res_block_spatial(x) # (24,5,5)
-        # avgpool and full-connection
-        x = self.pool1(x)
-        x = x.view(batch_size, 24)
-        x = self.classifier(x)
-        return x
-
-
-class NetSS2(nn.Module):
-    def __init__(self, classes):
-        super().__init__()
-        self.classes = classes
-        self.cnov3d_block1 = nn.Sequential(
-            nn.Conv3d(1, 24, kernel_size=(7,3,3), stride=(2,1,1), padding=(3,1,1)),
-            nn.BatchNorm3d(24),
-            nn.ReLU(inplace=True),
-        )
-        self.cnov3d_block2 = nn.Sequential(
-            nn.Conv3d(24, 24, kernel_size=(7,3,3), stride=(1,1,1), padding=(3,1,1)),
-            nn.BatchNorm3d(24),
-            nn.ReLU(inplace=True),
-        )
-        self.pool1 = nn.AvgPool3d(kernel_size=(2,2,2))
-        self.classifier = nn.Sequential(
+            nn.Linear(4096, 2048),
+            nn.ReLU(),
             nn.Dropout(),
-            nn.Linear(24*25, 128),
-            nn.ReLU(inplace=True),
-            nn.Dropout(),
-            nn.Linear(128, 128),
-            nn.ReLU(inplace=True),
-            nn.Linear(128, classes),
+            nn.Linear(2048, classes),
         )
 
     def forward(self, x):
         batch_size = x.size()[0]
-        x = self.cnov3d_block1(x) # (x -> 100*7*7)
-        x = self.pool1(x) # (50*3*3)
-        x = self.cnov3d_block2(x) # (50*3*3)
-        x = self.pool1(x) # (25*1*1)
-        x = x.view(batch_size, 24*25)
+        x = x.view(batch_size, 200)
         x = self.classifier(x)
         return x
 
@@ -142,23 +64,60 @@ class Net1D(nn.Module):
         return x
 
 
-class NetBP(nn.Module):
-    def __init__(self, classes):
+class Net3DByHamida(nn.Module):
+    def __init__(self, classes, input_channels, patch_size, dilation=1):
         super().__init__()
         self.classes = classes
-        
-        self.classifier = nn.Sequential(
-            nn.Linear(200, 1024),
+        self.input_channels = input_channels
+        self.patch_size = patch_size
+        self.conv1 = nn.Sequential(
+            nn.Conv3d(1, 20, kernel_size=(3,3,3), stride=1, padding=1),
+            nn.BatchNorm3d(20),
             nn.ReLU(inplace=True),
-            nn.Linear(1024, 1024),
-            nn.ReLU(inplace=True),
-            nn.Linear(1024, classes),
         )
+        self.conv2 = nn.Sequential(
+            nn.Conv3d(20, 35, kernel_size=(3,3,3), stride=1, padding=(1,0,0)),
+            nn.BatchNorm3d(35),
+            nn.ReLU(inplace=True),
+        )
+        self.conv3 = nn.Sequential(
+            nn.Conv3d(35, 35, (3,1,1), dilation=dilation, stride=(1,1,1), padding=(1,0,0)),
+            nn.BatchNorm3d(35),
+            nn.ReLU(inplace=True),
+        )
+        self.conv4 = nn.Sequential(
+            nn.Conv3d(35, 35, (2,1,1), dilation=dilation, stride=(2,1,1), padding=(1,0,0)),
+            nn.BatchNorm3d(35),
+            nn.ReLU(inplace=True),
+        )
+        self.pool1 = nn.Conv3d(
+            20, 20, (3, 1, 1), dilation=dilation, stride=(2, 1, 1), padding=(1, 0, 0))
+        self.pool2 = nn.Conv3d(
+            35, 35, (3, 1, 1), dilation=dilation, stride=(2, 1, 1), padding=(1, 0, 0))
+        self.features_size = self._get_final_flattened_size()
+        self.fc = nn.Linear(self.features_size, classes)
+
+    def _get_final_flattened_size(self):
+        with torch.no_grad():
+            x = torch.zeros((1, 1, self.input_channels, self.patch_size, self.patch_size))
+            x = self.conv1(x)
+            x = self.pool1(x)
+            x = self.conv2(x)
+            x = self.pool2(x)
+            x = self.conv3(x)
+            x = self.conv4(x)
+            _, t, c, w, h = x.size()
+        return t * c * w * h
 
     def forward(self, x):
-        batch_size = x.size()[0]
-        x = x.view(batch_size, 200)
-        x = self.classifier(x)
+        x = self.conv1(x)
+        x = self.pool1(x)
+        x = self.conv2(x)
+        x = self.pool2(x)
+        x = self.conv3(x)
+        x = self.conv4(x)
+        x = x.view(-1, self.features_size)
+        x = self.fc(x)
         return x
 
 
@@ -169,6 +128,7 @@ def train(net, trainloader):
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(net.parameters(), lr=0.001)
     for epoch in range(30):
+        running_loss_sum = 0
         print('epoch %d...' % (epoch+1))
         running_loss = 0.0
         for i, data in enumerate(trainloader):
@@ -181,9 +141,7 @@ def train(net, trainloader):
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
-            if i % 100 == 99:    # print every 2000 mini-batches
-                print('[%d, %d] loss: %.3f' % (epoch+1, i+1, running_loss/100))
-                running_loss = 0.0
+        print('loss: %.3f' % (running_loss/len(trainloader)))
     return net
 
 
@@ -225,8 +183,8 @@ def load_data(src_fn):
     return None
 
 
-def myLoader(dataset, label, train_perc):
-    pad_size = 3
+def myLoader3d(dataset, label, train_perc, patch_size=5):
+    pad_size = int((patch_size-1)/2)
     batch_size_train = 4
     batch_size_test = 4
     dataset = np.pad(dataset, ((0,0),(pad_size,pad_size),(pad_size,pad_size)))
@@ -323,9 +281,9 @@ def main():
     label = label.astype(int)
     classes = np.max(label) + 1
     dst_fn = 'res_ssrn.tif'
-    net = Net1D(classes)
-    # train_loader, test_loader = myLoader(dataset, label, 0.5) # data split
-    train_loader, test_loader = myLoader1d(dataset, label, 0.2)
+    net = Net3DByHamida(classes, input_channels=200, patch_size=5)
+    train_loader, test_loader = myLoader3d(dataset, label, 0.2) # data split
+    # train_loader, test_loader = myLoader1d(dataset, label, 0.2)
     print('train samples:%d, test samples:%d' % (len(train_loader),len(test_loader)))
     net = train(net, train_loader) # train
     test(net, test_loader)

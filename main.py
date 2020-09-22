@@ -20,9 +20,8 @@ def data_split(dataset, label):
     y = []
     for i in range(line):
         for j in range(colm):
-            if label[i, j] != 0:
-                x.append(np.ndarray.flatten(dataset[i,j,:]))
-                y.append(label[i,j])
+            x.append(np.ndarray.flatten(dataset[i,j,:]))
+            y.append(label[i,j])
     return np.array(x), np.array(y)
 
 
@@ -39,8 +38,8 @@ def model_apply(model, dataset):
 if __name__ == '__main__':
     dataset = load_data('./dataset/Indian_pines_corrected.mat')
     label = load_data('./dataset/Indian_pines_gt.mat')
-    dst_fn = 'res_RF.tif'
-    train_percent = 0.5
+    dst_fn = './tmp/res_RF.tif'
+    train_percent = 0.2
     model = 'RF'
     if dataset is None or label is None:
         raise Exception('failed to import data!')
@@ -55,8 +54,9 @@ if __name__ == '__main__':
         # RF
         classifier = RandomForestClassifier()
     classifier.fit(train_data, train_label)
-    print("训练集：%.4f" % classifier.score(train_data, train_label))
-    print("测试集：%.4f" % classifier.score(test_data, test_label))
+    print('train samples:%d, test samples: %d' % (len(train_label), len(test_label)))
+    print("train accuracy: %.4f" % classifier.score(train_data, train_label))
+    print("test accuracy: %.4f" % classifier.score(test_data, test_label))
     # apply
     predict = model_apply(classifier, dataset)
     skimage.io.imsave(dst_fn, predict.astype(np.uint8))
