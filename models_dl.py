@@ -2,6 +2,7 @@ import sys
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 import scipy.io as scio
 import random
@@ -11,6 +12,7 @@ from torch.utils.data import Dataset, DataLoader
 # Baseline: epoch=30 train:test=2:8 accuracy=0.51
 # Conv1D: epoch=30 train:test=2:8 accuracy=0.7
 # Net3DByHamida: epoch=30 train:test=2:8 accuracy=0.78
+# Net3DByLee: epoch=30 train:test=2:8 accuracy=0.61
 
 class Baseline(nn.Module):
     ''' baseline network: BP
@@ -118,6 +120,46 @@ class Net3DByHamida(nn.Module):
         x = self.conv4(x)
         x = x.view(-1, self.features_size)
         x = self.fc(x)
+        return x
+
+
+class Net3DByLee(nn.Module):
+    def __init__(self, in_channels, n_classes):
+        super().__init__()
+        self.conv3d_3x3 = nn.Conv3d(1, 128, (in_channels, 3, 3), stride=1, padding=(0,1,1))
+        self.conv3d_1x1 = nn.Conv3d(1, 128, (in_channels, 1, 1), stride=1, padding=0)
+        self.conv2d1 = nn.Conv2d(256, 128, 1)
+        self.conv2d2 = nn.Conv2d(128, 128, 1)
+        self.conv2d3 = nn.Conv2d(128, 128, 1)
+        self.conv2d4 = nn.Conv2d(128, 128, 1)
+        self.conv2d5 = nn.Conv2d(128, 128, 1)
+        self.conv2d6 = nn.Conv2d(128, 128, 1)
+        self.conv2d7 = nn.Conv2d(128, 128, 1)
+        self.conv2d8 = nn.Conv2d(128, n_classes, 1)
+        self.lrn1 = nn.LocalResponseNorm(256)
+        self.lrn2 = nn.LocalResponseNorm(128)
+        self.dropout = nn.Dropout(p=0.5)
+
+    def forward(self, x):
+        x_3x3 = self.conv3d_3x3(x)
+        x_1x1 = self.conv3d_1x1(x)
+        x = torch.cat([x_3x3, x_1x1], dim=1)
+        x = torch.squeeze(x, dim=2)
+        x = F.relu(self.lrn1(x))
+        x = self.conv2d1(x)
+        x = F.relu(self.lrn2(x))
+        x_res = F.relu(self.conv2d2(x))
+        x_res = self.conv2d3(x_res)
+        x = F.relu(x + x_res)
+        x_res = F.relu(self.conv2d4(x))
+        x_res = self.conv2d5(x_res)
+        x = F.relu(x + x_res)
+        x = F.relu(self.conv2d6(x))
+        x = self.dropout(x)
+        x = F.relu(self.conv2d7(x))
+        x = self.dropout(x)
+        x = self.conv2d8(x)
+        x = torch.sum(torch.sum(x, dim=2), dim=2)
         return x
 
 
@@ -281,8 +323,9 @@ def main():
     label = label.astype(int)
     classes = np.max(label) + 1
     dst_fn = 'res_ssrn.tif'
-    net = Net3DByHamida(classes, input_channels=200, patch_size=5)
-    train_loader, test_loader = myLoader3d(dataset, label, 0.2) # data split
+    # net = Net3DByHamida(classes, input_channels=200, patch_size=5)
+    net = Net3DByLee(200, classes)
+    train_loader, test_loader = myLoader3d(dataset, label, 0.2, patch_size=5)
     # train_loader, test_loader = myLoader1d(dataset, label, 0.2)
     print('train samples:%d, test samples:%d' % (len(train_loader),len(test_loader)))
     net = train(net, train_loader) # train
